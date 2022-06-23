@@ -35,7 +35,7 @@ public final class Performer {
         }
     }
 
-    private static Method expensiveGetMethod(Class<?> type, String selector) throws NoSuchMethodException {
+    private static Method originalGetMethod(Class<?> type, String selector) throws NoSuchMethodException {
         // To demonstrate the effect of memoization better make the original
         // getMethod implementation slower with a little delay. This also
         // compensates the fact a little that "original" getMethod is more
@@ -89,7 +89,9 @@ public final class Performer {
                             c -> new HashMap<>())
                     .computeIfAbsent(selector, s -> {
                         try {
-                            return expensiveGetMethod(type, selector);
+                            // only when no method was found in the cache the
+                            // "expensive" original getMethod is called.
+                            return originalGetMethod(type, selector);
                         } catch (NoSuchMethodException e) {
                             return e;
                         }
@@ -105,7 +107,7 @@ public final class Performer {
                             type, selector, value));
 
         } else {
-            return expensiveGetMethod(type, selector);
+            return originalGetMethod(type, selector);
         }
     }
 
