@@ -209,6 +209,7 @@ public final class Performer {
                     // this is the Method case
                     String methodName = (String) methodNameOrException;
                     Class<?>[] parameterTypes = (Class<?>[]) in.readObject();
+                    // TODO: check if using "getMethods" is more efficient
                     Method method = type.getMethod(methodName, parameterTypes);
                     selectorToMethodMap.put(selector, method);
                 } else {
