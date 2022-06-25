@@ -59,8 +59,22 @@ public final class Performer {
 
     //region Memoization
 
+    private static final class MethodLocator {
+        public final String methodName;
+        public final Class<?>[] parameterTypes;
+
+        public MethodLocator(String methodName, Class<?>[] parameterTypes) {
+            this.methodName = methodName;
+            this.parameterTypes = parameterTypes;
+        }
+
+        public Method getMethodForClass(Class<?> type) throws NoSuchMethodException {
+            return type.getMethod(methodName, parameterTypes);
+        }
+    }
+
     /**
-     * A 2-step map, mapping (Class -> (selector String -> Method|NoSuchMethodException))
+     * A 2-step map, mapping (Class -> (selector: String -> Method|MethodLocator|NoSuchMethodException))
      */
     private static Map<Class<?>, Map<String, Object>> classToSelectorToMethodMap;
 
@@ -99,6 +113,16 @@ public final class Performer {
             if (value instanceof Method) {
                 return (Method) value;
             }
+            if (value instanceof MethodLocator) {
+                // replace the MethodLocator stored for (type,selector) with
+                // the Method it refers to and return the Method. Next time
+                // a lookup for this (type,selector) combination in
+                // `classToSelectorToMethodMap` will directly return the
+                // Method object.
+                Method method = ((MethodLocator) value).getMethodForClass(type);
+                classToSelectorToMethodMap.get(type).put(selector, method);
+                return method;
+            }
             if (value instanceof NoSuchMethodException) {
                 throw (NoSuchMethodException) value;
             }
@@ -134,10 +158,18 @@ public final class Performer {
     }
 
     public static void loadMethods(String filePath) throws IOException, ClassNotFoundException, NoSuchMethodException {
+        loadMethods(filePath, false);
+    }
+
+    public static void loadMethodsLazy(String filePath) throws IOException, ClassNotFoundException, NoSuchMethodException {
+        loadMethods(filePath, true);
+    }
+
+    public static void loadMethods(String filePath, boolean loadMethodsLazy) throws IOException, ClassNotFoundException, NoSuchMethodException {
         try (FileInputStream fileInputStream = new FileInputStream(filePath);
              ObjectInputStream objectInputStream = new ObjectInputStream(fileInputStream)) {
 
-            classToSelectorToMethodMap = readMethodMap(objectInputStream);
+            classToSelectorToMethodMap = readMethodMap(objectInputStream, loadMethodsLazy);
         }
     }
 
@@ -171,12 +203,19 @@ public final class Performer {
                 // write the method or other value associated
                 Object value = selectorToMethod.getValue();
                 if (value instanceof Method) {
-                    // for a method ...
+                    // for a method write its locator info
+                    // (name and parameter types)
                     Method method = (Method) value;
-                    // ... write its name
-                    objectOutputStream.writeObject(method.getName());
-                    // ... write its parameter types
-                    objectOutputStream.writeObject(method.getParameterTypes());
+                    writeMethodLocatorInfo(
+                            objectOutputStream,
+                            method.getName(), method.getParameterTypes());
+                } else if (value instanceof MethodLocator) {
+                    // for a method write its locator info
+                    // (name and parameter types)
+                    MethodLocator methodLocator = (MethodLocator) value;
+                    writeMethodLocatorInfo(
+                            objectOutputStream,
+                            methodLocator.methodName, methodLocator.parameterTypes);
                 } else {
                     // other objects (e.g. Exceptions) write as they are
                     objectOutputStream.writeObject(value);
@@ -185,8 +224,15 @@ public final class Performer {
         }
     }
 
+    private static void writeMethodLocatorInfo(ObjectOutputStream objectOutputStream, String methodName, Class<?>[] parameterTypes) throws IOException {
+        objectOutputStream.writeObject(methodName);
+        objectOutputStream.writeObject(parameterTypes);
+    }
+
     private static Map<Class<?>, Map<String, Object>> readMethodMap(
-            ObjectInputStream in) throws IOException, ClassNotFoundException, NoSuchMethodException {
+            ObjectInputStream in, boolean loadMethodsLazy)
+            throws IOException, ClassNotFoundException, NoSuchMethodException {
+
         Map<Class<?>, Map<String, Object>> result = new IdentityHashMap<>();
 
         // read the number of classes
@@ -207,11 +253,17 @@ public final class Performer {
                 Object methodNameOrException = in.readObject();
                 if (methodNameOrException instanceof String) {
                     // this is the Method case
+
                     String methodName = (String) methodNameOrException;
                     Class<?>[] parameterTypes = (Class<?>[]) in.readObject();
+                    // either store a MethodLocator in the map (to be converted
+                    // into a "real" Method when the Method is needed the first
+                    // time) or the "real" Method
                     // TODO: check if using "getMethods" is more efficient
-                    Method method = type.getMethod(methodName, parameterTypes);
-                    selectorToMethodMap.put(selector, method);
+                    Object someKindOfMethod = loadMethodsLazy
+                            ? new MethodLocator(methodName, parameterTypes)
+                            : type.getMethod(methodName, parameterTypes);
+                    selectorToMethodMap.put(selector, someKindOfMethod);
                 } else {
                     selectorToMethodMap.put(selector, methodNameOrException);
                 }

@@ -5,8 +5,11 @@ import org.abego.lab.perform.sample.B;
 import org.abego.lab.perform.sample.C;
 import org.abego.lab.perform.sample.D;
 import org.abego.lab.perform.sample.E;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.File;
 import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -14,6 +17,12 @@ import static org.junit.jupiter.api.Assertions.*;
 class SmokeTest {
     private static final String METHOD_MAP_FILE_PATH = "methods.ser";
     public static final int TEST_REPEAT_COUNT = 20;
+    private static final int LOAD_REPEAT_COUNT = 100;
+
+    @BeforeEach
+    void setUp() {
+        Performer.setMemoizationEnabled(false);
+    }
 
     @Test
     void runPerformTestCodeMultipleTimes_noMemoization() {
@@ -46,6 +55,54 @@ class SmokeTest {
         Performer.loadMethods(METHOD_MAP_FILE_PATH);
 
         runPerformTestCodeMultipleTimes();
+    }
+
+    /**
+     * Check if a classToSelectorToMethodMap containing a combination of
+     * Method, NoSuchMethod AND MethodLocator objects is correctly stored
+     * and loaded
+     */
+    @Test
+    void runPerformTestCodeMultipleTimes_load_save_load(@TempDir File tempDir) throws
+            IOException, ClassNotFoundException, NoSuchMethodException {
+        Performer.setMemoizationEnabled(true);
+
+        // load the method map lazy. it will contain MethodLocator values
+        Performer.loadMethodsLazy(METHOD_MAP_FILE_PATH);
+
+        // run one method. This will replace the corresponding
+        // MethodLocator object with its Method object
+        A a = new A();
+        Performer.perform(a, "toString");
+
+        // save the method map and load it.
+        String methodMapFilePath =
+                new File(tempDir, "methods.ser").getAbsolutePath();
+        Performer.saveMethods(methodMapFilePath);
+        Performer.loadMethods(methodMapFilePath);
+
+        // make sure the tests run with the newly loaded methodMap
+        runPerformTestCodeMultipleTimes();
+    }
+
+    @Test
+    void loadMethodsMultipleTime() throws IOException, ClassNotFoundException, NoSuchMethodException {
+        Performer.setMemoizationEnabled(true);
+        for (int i = 0; i < LOAD_REPEAT_COUNT; i++) {
+            Performer.loadMethods(METHOD_MAP_FILE_PATH);
+        }
+
+        assertEquals("an A", Performer.perform(new A(), "toString"));
+    }
+
+    @Test
+    void loadMethodsLazyMultipleTime() throws IOException, ClassNotFoundException, NoSuchMethodException {
+        Performer.setMemoizationEnabled(true);
+        for (int i = 0; i < LOAD_REPEAT_COUNT; i++) {
+            Performer.loadMethodsLazy(METHOD_MAP_FILE_PATH);
+        }
+
+        assertEquals("an A", Performer.perform(new A(), "toString"));
     }
 
     @Test
