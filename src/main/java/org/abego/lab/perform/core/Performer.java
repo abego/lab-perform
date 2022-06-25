@@ -148,6 +148,10 @@ public final class Performer {
     //region Serialization of Memoization data
 
     public static void saveMethods(String filePath) throws IOException {
+        if (!isMemoizationEnabled()) {
+            throw new IllegalStateException("Must enable memoization to save methods.");
+        }
+
         try (FileOutputStream fileOutputStream = new FileOutputStream(filePath);
              ObjectOutputStream objectOutputStream = new ObjectOutputStream(fileOutputStream)) {
 

@@ -49,6 +49,13 @@ class SmokeTest {
     }
 
     @Test
+    void saveMethods_requiresMemoizationEnbled() {
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> Performer.saveMethods(METHOD_MAP_FILE_PATH));
+        assertEquals("Must enable memoization to save methods.",e.getMessage());
+    }
+
+    @Test
     void runPerformTestCodeMultipleTimes_withMemoization_loaded() throws
             IOException, ClassNotFoundException, NoSuchMethodException {
 
