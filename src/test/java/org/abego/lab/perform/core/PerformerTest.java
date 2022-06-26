@@ -1,5 +1,7 @@
 package org.abego.lab.perform.core;
 
+import org.abego.lab.perform.bigsample.BigSample;
+import org.abego.lab.perform.bigsample.C0;
 import org.abego.lab.perform.sample.A;
 import org.abego.lab.perform.sample.B;
 import org.abego.lab.perform.sample.C;
@@ -16,14 +18,20 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class PerformerTest {
     private static final String SMALL_TEST_SAMPLE_METHOD_MAP_FILE_PATH = "methods-smallsample";
+    private static final String BIG_TEST_SAMPLE_METHOD_MAP_FILE_PATH = "methods-bigsample";
     private static final String METHOD_MAP_FILE_NAME = "methodMap";
     private static final long EXTRA_ORIGINAL_GET_METHOD_DELAY_MICROS = 40;
 
     private static final int TEST_REPEAT_COUNT = 20;
     private static final int LOAD_REPEAT_COUNT = 100;
+    private static final int DELAY_MICROS_FOR_BIG_SAMPLE = 10;
 
     private static String pathOfMethodMapFileInDir(File directory) {
         return new File(directory, METHOD_MAP_FILE_NAME).getAbsolutePath();
+    }
+
+    private static void setDelayForBigSample() {
+        Performer.setExtraDelayInOriginalGetMethodInMicros(DELAY_MICROS_FOR_BIG_SAMPLE);
     }
 
     @BeforeEach
@@ -47,6 +55,29 @@ class PerformerTest {
     }
 
     @Test
+    void perform_withoutMemoization_bigSample() {
+        setDelayForBigSample();
+        Performer.setMemoizationEnabled(false);
+        long startTime = System.nanoTime();
+
+        runBigSample();
+
+        printDuration(startTime, System.nanoTime(), "perform_withoutMemoization_bigSample");
+    }
+
+    @Test
+    void perform_withoutMemoization_bigSampleTwice() {
+        setDelayForBigSample();
+        Performer.setMemoizationEnabled(false);
+        long startTime = System.nanoTime();
+
+        runBigSample();
+        runBigSample();
+
+        printDuration(startTime, System.nanoTime(), "perform_withoutMemoization_bigSampleTwice");
+    }
+
+    @Test
     void perform_withMemoization_smallSampleMultipleTimes() {
         Performer.setMemoizationEnabled(true);
         long startTime = System.nanoTime();
@@ -54,6 +85,29 @@ class PerformerTest {
         runSmallTestSampleMultipleTimes();
 
         printDuration(startTime, System.nanoTime(), "perform_withMemoization_smallSampleMultipleTimes");
+    }
+
+    @Test
+    void perform_withMemoization_bigSample() {
+        setDelayForBigSample();
+        Performer.setMemoizationEnabled(true);
+        long startTime = System.nanoTime();
+
+        runBigSample();
+
+        printDuration(startTime, System.nanoTime(), "perform_withMemoization_bigSample");
+    }
+
+    @Test
+    void perform_withMemoization_bigSampleTwice() {
+        setDelayForBigSample();
+        Performer.setMemoizationEnabled(true);
+        long startTime = System.nanoTime();
+
+        runBigSample();
+        runBigSample();
+
+        printDuration(startTime, System.nanoTime(), "perform_withMemoization_bigSampleTwice");
     }
 
     @Test
@@ -71,7 +125,21 @@ class PerformerTest {
     }
 
     @Test
-    void perform_withMemoization_andLoadedFromFile_smallSampleMultipleTimes() throws
+    void perform_withMemoization_and_saveMethods_bigSample(
+            @TempDir File tempDir) throws IOException {
+        setDelayForBigSample();
+        Performer.setMemoizationEnabled(true);
+        long startTime = System.nanoTime();
+
+        runBigSample();
+
+        Performer.saveMethods(pathOfMethodMapFileInDir(tempDir));
+
+        printDuration(startTime, System.nanoTime(), "perform_withMemoization_and_saveMethods_bigSample");
+    }
+
+    @Test
+    void perform_withMemoization_afterLoadMethods_smallSampleMultipleTimes() throws
             IOException, ClassNotFoundException, NoSuchMethodException {
         long startTime = System.nanoTime();
 
@@ -80,6 +148,19 @@ class PerformerTest {
         runSmallTestSampleMultipleTimes();
 
         printDuration(startTime, System.nanoTime(), "perform_withMemoization_andLoadedFromFile_smallSampleMultipleTimes");
+    }
+
+    @Test
+    void perform_withMemoization_afterLoadMethods_bigSample() throws
+            IOException, ClassNotFoundException, NoSuchMethodException {
+        setDelayForBigSample();
+        long startTime = System.nanoTime();
+
+        Performer.loadMethods(BIG_TEST_SAMPLE_METHOD_MAP_FILE_PATH);
+
+        runBigSample();
+
+        printDuration(startTime, System.nanoTime(), "perform_withMemoization_afterLoadMethods_bigSample");
     }
 
     @Test
@@ -97,6 +178,19 @@ class PerformerTest {
     }
 
     @Test
+    void loadMethods_bigSample() throws IOException, ClassNotFoundException, NoSuchMethodException {
+        setDelayForBigSample();
+        Performer.setMemoizationEnabled(true);
+        long startTime = System.nanoTime();
+
+        Performer.loadMethods(BIG_TEST_SAMPLE_METHOD_MAP_FILE_PATH);
+
+        assertEquals("C0#m0()", Performer.perform(new C0(), "m0"));
+
+        printDuration(startTime, System.nanoTime(), "loadMethods_bigSample");
+    }
+
+    @Test
     void loadMethodsLazy_multipleTime_smallSample() throws IOException, ClassNotFoundException, NoSuchMethodException {
         Performer.setMemoizationEnabled(true);
         long startTime = System.nanoTime();
@@ -108,6 +202,19 @@ class PerformerTest {
         assertEquals("an A", Performer.perform(new A(), "toString"));
 
         printDuration(startTime, System.nanoTime(), "loadMethodsLazy_multipleTime_smallSample");
+    }
+
+    @Test
+    void loadMethodsLazy_bigSample() throws IOException, ClassNotFoundException, NoSuchMethodException {
+        setDelayForBigSample();
+        Performer.setMemoizationEnabled(true);
+        long startTime = System.nanoTime();
+
+        Performer.loadMethodsLazy(BIG_TEST_SAMPLE_METHOD_MAP_FILE_PATH);
+
+        assertEquals("C0#m0()", Performer.perform(new C0(), "m0"));
+
+        printDuration(startTime, System.nanoTime(), "loadMethodsLazy_bigSample");
     }
 
     @Test
@@ -154,6 +261,10 @@ class PerformerTest {
 
         // make sure the tests run with the newly loaded methodMap
         runSmallTestSample();
+    }
+
+    private void runBigSample() {
+        BigSample.main(new String[0]);
     }
 
     private void runSmallTestSampleMultipleTimes() {
