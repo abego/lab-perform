@@ -66,6 +66,7 @@ class PerformerTest {
     @Test
     void loadMethods_multipleTime_smallSample() throws IOException, ClassNotFoundException, NoSuchMethodException {
         Performer.setMemoizationEnabled(true);
+
         for (int i = 0; i < LOAD_REPEAT_COUNT; i++) {
             Performer.loadMethods(SMALL_TEST_SAMPLE_METHOD_MAP_FILE_PATH);
         }
@@ -76,6 +77,7 @@ class PerformerTest {
     @Test
     void loadMethodsLazy_multipleTime_smallSample() throws IOException, ClassNotFoundException, NoSuchMethodException {
         Performer.setMemoizationEnabled(true);
+
         for (int i = 0; i < LOAD_REPEAT_COUNT; i++) {
             Performer.loadMethodsLazy(SMALL_TEST_SAMPLE_METHOD_MAP_FILE_PATH);
         }

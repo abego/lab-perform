@@ -16,6 +16,18 @@ public final class Performer {
     }
 
     //region perform: the basic functionality of this class
+    private static long extraDelayInOriginalGetMethodInMicros = 1000;
+
+    public static long getExtraDelayInOriginalGetMethodInMicros() {
+        return extraDelayInOriginalGetMethodInMicros;
+    }
+
+    public static void setExtraDelayInOriginalGetMethodInMicros(long delayInMicros) {
+        if (delayInMicros < 0) {
+            throw new IllegalArgumentException("delayInMicros must not be negative");
+        }
+        extraDelayInOriginalGetMethodInMicros = delayInMicros;
+    }
 
     public static Object perform(Object receiver, String selector, Object... arguments) {
         try {
@@ -39,10 +51,17 @@ public final class Performer {
         // To demonstrate the effect of memoization better make the original
         // getMethod implementation slower with a little delay. This also
         // compensates the fact a little that "original" getMethod is more
-        // expensive than our implementation.r
-        delayForMilliseconds(1);
+        // expensive than our implementation.
+        long endTime = System.nanoTime() + 1000*getExtraDelayInOriginalGetMethodInMicros();
+        //noinspection StatementWithEmptyBody
+        while (System.nanoTime() < endTime) {
+            // busy waiting
+        }
 
+        // Just to demonstrate a dispatch with a non-ID selector name we
+        // translate the "+" selector to the "plus" method name
         String methodName = selector.equals("+") ? "plus" : selector;
+
         for (Method method : type.getMethods()) {
             // for now just return the first method matching the methodName
             // (ignore overloads)
@@ -114,7 +133,7 @@ public final class Performer {
                 return (Method) value;
             }
             if (value instanceof MethodLocator) {
-                // replace the MethodLocator stored for (type,selector) with
+                // replace the MethodLocator stored for type and selector with
                 // the Method it refers to and return the Method. Next time
                 // a lookup for this (type,selector) combination in
                 // `classToSelectorToMethodMap` will directly return the
@@ -276,16 +295,6 @@ public final class Performer {
         return result;
     }
 
-    //endregion
-
-    //region Helper code
-    private static void delayForMilliseconds(int millis) {
-        try {
-            Thread.sleep(millis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
     //endregion
 
 }
