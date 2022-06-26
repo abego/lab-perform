@@ -15,8 +15,8 @@ import java.io.IOException;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PerformerTest {
-    private static final String SMALL_TEST_SAMPLE_METHOD_MAP_FILE_PATH = "methods-smallsample.ser";
-    private static final String METHOD_MAP_FILE_NAME = "methodMap.ser";
+    private static final String SMALL_TEST_SAMPLE_METHOD_MAP_FILE_PATH = "methods-smallsample";
+    private static final String METHOD_MAP_FILE_NAME = "methodMap";
     private static final int TEST_REPEAT_COUNT = 20;
     private static final int LOAD_REPEAT_COUNT = 100;
 
