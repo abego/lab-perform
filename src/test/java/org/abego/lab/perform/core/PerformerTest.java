@@ -14,10 +14,15 @@ import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class SmokeTest {
-    private static final String METHOD_MAP_FILE_PATH = "methods.ser";
-    public static final int TEST_REPEAT_COUNT = 20;
+class PerformerTest {
+    private static final String SMALL_TEST_SAMPLE_METHOD_MAP_FILE_PATH = "methods-smallsample.ser";
+    private static final String METHOD_MAP_FILE_NAME = "methodMap.ser";
+    private static final int TEST_REPEAT_COUNT = 20;
     private static final int LOAD_REPEAT_COUNT = 100;
+
+    private static String pathOfMethodMapFileInDir(File directory) {
+        return new File(directory, METHOD_MAP_FILE_NAME).getAbsolutePath();
+    }
 
     @BeforeEach
     void setUp() {
@@ -25,95 +30,61 @@ class SmokeTest {
     }
 
     @Test
-    void runPerformTestCodeMultipleTimes_noMemoization() {
+    void perform_withoutMemoization_smallSampleMultipleTimes() {
         Performer.setMemoizationEnabled(false);
 
-        runPerformTestCodeMultipleTimes();
+        runSmallTestSampleMultipleTimes();
     }
 
     @Test
-    void runPerformTestCodeMultipleTimes_withMemoization() {
+    void perform_withMemoization_smallSampleMultipleTimes() {
         Performer.setMemoizationEnabled(true);
 
-        runPerformTestCodeMultipleTimes();
+        runSmallTestSampleMultipleTimes();
     }
 
-
     @Test
-    void runPerformTestCodeMultipleTimes_withMemoization_andSave() throws IOException {
+    void perform_withMemoization_and_saveMethods_smallSampleMultipleTimes(
+            @TempDir File tempDir) throws IOException {
+
         Performer.setMemoizationEnabled(true);
 
-        runPerformTestCodeMultipleTimes();
+        runSmallTestSampleMultipleTimes();
 
-        Performer.saveMethods(METHOD_MAP_FILE_PATH);
+        Performer.saveMethods(pathOfMethodMapFileInDir(tempDir));
     }
 
     @Test
-    void saveMethods_requiresMemoizationEnbled() {
-        IllegalStateException e = assertThrows(IllegalStateException.class,
-                () -> Performer.saveMethods(METHOD_MAP_FILE_PATH));
-        assertEquals("Must enable memoization to save methods.",e.getMessage());
-    }
-
-    @Test
-    void runPerformTestCodeMultipleTimes_withMemoization_loaded() throws
+    void perform_withMemoization_andLoadedFromFile_smallSampleMultipleTimes() throws
             IOException, ClassNotFoundException, NoSuchMethodException {
 
-        Performer.loadMethods(METHOD_MAP_FILE_PATH);
+        Performer.loadMethods(SMALL_TEST_SAMPLE_METHOD_MAP_FILE_PATH);
 
-        runPerformTestCodeMultipleTimes();
-    }
-
-    /**
-     * Check if a classToSelectorToMethodMap containing a combination of
-     * Method, NoSuchMethod AND MethodLocator objects is correctly stored
-     * and loaded
-     */
-    @Test
-    void runPerformTestCodeMultipleTimes_load_save_load(@TempDir File tempDir) throws
-            IOException, ClassNotFoundException, NoSuchMethodException {
-        Performer.setMemoizationEnabled(true);
-
-        // load the method map lazy. it will contain MethodLocator values
-        Performer.loadMethodsLazy(METHOD_MAP_FILE_PATH);
-
-        // run one method. This will replace the corresponding
-        // MethodLocator object with its Method object
-        A a = new A();
-        Performer.perform(a, "toString");
-
-        // save the method map and load it.
-        String methodMapFilePath =
-                new File(tempDir, "methods.ser").getAbsolutePath();
-        Performer.saveMethods(methodMapFilePath);
-        Performer.loadMethods(methodMapFilePath);
-
-        // make sure the tests run with the newly loaded methodMap
-        runPerformTestCodeMultipleTimes();
+        runSmallTestSampleMultipleTimes();
     }
 
     @Test
-    void loadMethodsMultipleTime() throws IOException, ClassNotFoundException, NoSuchMethodException {
+    void loadMethods_multipleTime_smallSample() throws IOException, ClassNotFoundException, NoSuchMethodException {
         Performer.setMemoizationEnabled(true);
         for (int i = 0; i < LOAD_REPEAT_COUNT; i++) {
-            Performer.loadMethods(METHOD_MAP_FILE_PATH);
+            Performer.loadMethods(SMALL_TEST_SAMPLE_METHOD_MAP_FILE_PATH);
         }
 
         assertEquals("an A", Performer.perform(new A(), "toString"));
     }
 
     @Test
-    void loadMethodsLazyMultipleTime() throws IOException, ClassNotFoundException, NoSuchMethodException {
+    void loadMethodsLazy_multipleTime_smallSample() throws IOException, ClassNotFoundException, NoSuchMethodException {
         Performer.setMemoizationEnabled(true);
         for (int i = 0; i < LOAD_REPEAT_COUNT; i++) {
-            Performer.loadMethodsLazy(METHOD_MAP_FILE_PATH);
+            Performer.loadMethodsLazy(SMALL_TEST_SAMPLE_METHOD_MAP_FILE_PATH);
         }
 
         assertEquals("an A", Performer.perform(new A(), "toString"));
     }
 
     @Test
-    void forceInvocationTargetException() {
+    void perform_failingMethodThrowsInvocationTargetException() {
         A a = new A();
 
         PerformException e = assertThrows(PerformException.class,
@@ -121,13 +92,50 @@ class SmokeTest {
         assertEquals("java.lang.reflect.InvocationTargetException", e.getMessage());
     }
 
-    private void runPerformTestCodeMultipleTimes() {
+    @Test
+    void saveMethods_requiresMemoizationEnabled(@TempDir File tempDir) {
+        String filePath = pathOfMethodMapFileInDir(tempDir);
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> Performer.saveMethods(filePath));
+
+        assertEquals("Must enable memoization to save methods.", e.getMessage());
+    }
+
+    /**
+     * Check if a methodMap containing a combination of
+     * Method, NoSuchMethod AND MethodLocator objects is correctly stored
+     * and loaded
+     */
+    @Test
+    void savingMixOfMethodAndNoSuchMethodAndMethodLocatorObjectsWorks(@TempDir File tempDir)
+            throws IOException, ClassNotFoundException, NoSuchMethodException {
+
+        Performer.setMemoizationEnabled(true);
+
+        // load the method map lazy. It will contain MethodLocator values.
+        Performer.loadMethodsLazy(SMALL_TEST_SAMPLE_METHOD_MAP_FILE_PATH);
+
+        // Run one method. This will replace the corresponding
+        // MethodLocator object with its Method object
+        A a = new A();
+        Performer.perform(a, "toString");
+
+        // save the method map and load it.
+        String methodMapFilePath = pathOfMethodMapFileInDir(tempDir);
+        Performer.saveMethods(methodMapFilePath);
+        Performer.loadMethods(methodMapFilePath);
+
+        // make sure the tests run with the newly loaded methodMap
+        runSmallTestSample();
+    }
+
+    private void runSmallTestSampleMultipleTimes() {
         for (int i = 0; i < TEST_REPEAT_COUNT; i++) {
-            runPerformTestCode();
+            runSmallTestSample();
         }
     }
 
-    private void runPerformTestCode() {
+    private void runSmallTestSample() {
         A a = new A();
         B b = new B();
         C c = new C();
