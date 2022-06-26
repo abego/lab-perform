@@ -17,6 +17,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class PerformerTest {
     private static final String SMALL_TEST_SAMPLE_METHOD_MAP_FILE_PATH = "methods-smallsample";
     private static final String METHOD_MAP_FILE_NAME = "methodMap";
+    private static final long EXTRA_ORIGINAL_GET_METHOD_DELAY_MICROS = 40;
+
     private static final int TEST_REPEAT_COUNT = 20;
     private static final int LOAD_REPEAT_COUNT = 100;
 
@@ -27,20 +29,31 @@ class PerformerTest {
     @BeforeEach
     void setUp() {
         Performer.setMemoizationEnabled(false);
+        Performer.setExtraDelayInOriginalGetMethodInMicros(EXTRA_ORIGINAL_GET_METHOD_DELAY_MICROS);
     }
 
     @Test
     void perform_withoutMemoization_smallSampleMultipleTimes() {
         Performer.setMemoizationEnabled(false);
+        long startTime = System.nanoTime();
 
         runSmallTestSampleMultipleTimes();
+
+        printDuration(startTime, System.nanoTime(), "perform_withoutMemoization_smallSampleMultipleTimes");
+    }
+
+    private void printDuration(long startTime, long endTime, String testName) {
+        System.out.println(testName +": " + ((endTime - startTime +500)/ 1000) / 1000.0 + " ms");
     }
 
     @Test
     void perform_withMemoization_smallSampleMultipleTimes() {
         Performer.setMemoizationEnabled(true);
+        long startTime = System.nanoTime();
 
         runSmallTestSampleMultipleTimes();
+
+        printDuration(startTime, System.nanoTime(), "perform_withMemoization_smallSampleMultipleTimes");
     }
 
     @Test
@@ -48,41 +61,53 @@ class PerformerTest {
             @TempDir File tempDir) throws IOException {
 
         Performer.setMemoizationEnabled(true);
+        long startTime = System.nanoTime();
 
         runSmallTestSampleMultipleTimes();
 
         Performer.saveMethods(pathOfMethodMapFileInDir(tempDir));
+
+        printDuration(startTime, System.nanoTime(), "perform_withMemoization_and_saveMethods_smallSampleMultipleTimes");
     }
 
     @Test
     void perform_withMemoization_andLoadedFromFile_smallSampleMultipleTimes() throws
             IOException, ClassNotFoundException, NoSuchMethodException {
+        long startTime = System.nanoTime();
 
         Performer.loadMethods(SMALL_TEST_SAMPLE_METHOD_MAP_FILE_PATH);
 
         runSmallTestSampleMultipleTimes();
+
+        printDuration(startTime, System.nanoTime(), "perform_withMemoization_andLoadedFromFile_smallSampleMultipleTimes");
     }
 
     @Test
     void loadMethods_multipleTime_smallSample() throws IOException, ClassNotFoundException, NoSuchMethodException {
         Performer.setMemoizationEnabled(true);
+        long startTime = System.nanoTime();
 
         for (int i = 0; i < LOAD_REPEAT_COUNT; i++) {
             Performer.loadMethods(SMALL_TEST_SAMPLE_METHOD_MAP_FILE_PATH);
         }
 
         assertEquals("an A", Performer.perform(new A(), "toString"));
+
+        printDuration(startTime, System.nanoTime(), "loadMethods_multipleTime_smallSample");
     }
 
     @Test
     void loadMethodsLazy_multipleTime_smallSample() throws IOException, ClassNotFoundException, NoSuchMethodException {
         Performer.setMemoizationEnabled(true);
+        long startTime = System.nanoTime();
 
         for (int i = 0; i < LOAD_REPEAT_COUNT; i++) {
             Performer.loadMethodsLazy(SMALL_TEST_SAMPLE_METHOD_MAP_FILE_PATH);
         }
 
         assertEquals("an A", Performer.perform(new A(), "toString"));
+
+        printDuration(startTime, System.nanoTime(), "loadMethodsLazy_multipleTime_smallSample");
     }
 
     @Test
