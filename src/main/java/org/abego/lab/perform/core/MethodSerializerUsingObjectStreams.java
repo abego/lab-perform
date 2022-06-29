@@ -2,6 +2,9 @@ package org.abego.lab.perform.core;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
@@ -12,26 +15,44 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
-import java.util.IdentityHashMap;
 import java.util.Map;
 
-final class MethodSerializerUsingObjectStreams implements MethodSerializer {
-    private final class MethodLocator {
-        public final String methodName;
-        public final Class<?>[] parameterTypes;
+import static org.abego.lab.perform.core.MethodMapDefault.createMethodMapDefault;
 
-        public MethodLocator(String methodName, Class<?>[] parameterTypes) {
+final class MethodSerializerUsingObjectStreams implements MethodSerializer {
+    private static final Class<?>[] EMPTY_CLASS_ARRAY = new Class<?>[0];
+    private static final String[] EMPTY_STRING_ARRAY = new String[0] ;
+    private static final Map<String, Class<?>> TYPES_BY_NAME = new HashMap<>();
+
+    static {
+        TYPES_BY_NAME.put("byte", Byte.TYPE);
+        TYPES_BY_NAME.put("short", Short.TYPE);
+        TYPES_BY_NAME.put("int", Integer.TYPE);
+        TYPES_BY_NAME.put("long", Long.TYPE);
+        TYPES_BY_NAME.put("float", Float.TYPE);
+        TYPES_BY_NAME.put("double", Double.TYPE);
+        TYPES_BY_NAME.put("char", Character.TYPE);
+        TYPES_BY_NAME.put("boolean", Boolean.TYPE);
+    }
+
+    private static final class MethodLocator {
+        public final String methodName;
+        public final String[] parameterTypesNames;
+
+        public MethodLocator(String methodName, String[] parameterTypesNames) {
             this.methodName = methodName;
-            this.parameterTypes = parameterTypes;
+            this.parameterTypesNames = parameterTypesNames;
         }
 
         public Method getMethodForClass(Class<?> type) throws NoSuchMethodException {
+            Class<?>[] parameterTypes = parameterTypesNames.length == 0
+                    ? EMPTY_CLASS_ARRAY : asTypesArray(parameterTypesNames);
             return type.getMethod(methodName, parameterTypes);
         }
     }
 
     @Override
-    public void saveMethods(String filePath, Map<Class<?>, Map<String, Object>> methodMap) throws IOException {
+    public void saveMethods(String filePath, MethodMap methodMap) throws IOException {
         try (OutputStream outputStream = newOutputStream(filePathForSerialization(filePath));
              ObjectOutputStream objectOutputStream = new ObjectOutputStream(outputStream)) {
 
@@ -42,7 +63,7 @@ final class MethodSerializerUsingObjectStreams implements MethodSerializer {
     }
 
     @Override
-    public Map<Class<?>, Map<String, Object>> loadMethods(String filePath, boolean loadMethodsLazy) throws IOException, ClassNotFoundException, NoSuchMethodException {
+    public MethodMap loadMethods(String filePath, boolean loadMethodsLazy) throws IOException, ClassNotFoundException, NoSuchMethodException {
         try (InputStream inputStream = newInputStream(filePathForSerialization(filePath));
              ObjectInputStream objectInputStream = new ObjectInputStream(inputStream)) {
 
@@ -55,7 +76,7 @@ final class MethodSerializerUsingObjectStreams implements MethodSerializer {
             Class<?> type,
             String selector,
             Object value,
-            Map<Class<?>, Map<String, Object>> methodMap) throws NoSuchMethodException {
+            MethodMap methodMap) throws NoSuchMethodException {
 
         if (value instanceof MethodLocator) {
             // replace the MethodLocator stored for type and selector with
@@ -67,14 +88,14 @@ final class MethodSerializerUsingObjectStreams implements MethodSerializer {
             methodMap.get(type).put(selector, method);
             return method;
         }
-        throw new IllegalStateException(
+        throw new PerformException(
                 String.format("Unexpected value memoized for %s and selector '%s': %s",
                         type, selector, value));
     }
 
     private static void writeMethodMap(
             ObjectOutputStream objectOutputStream,
-            Map<Class<?>, Map<String, Object>> methodMap) throws IOException {
+            MethodMap methodMap) throws IOException {
 
         // We cannot just use
         //    objectOutputStream.writeObject(classToSelectorToMethodMap)
@@ -86,9 +107,13 @@ final class MethodSerializerUsingObjectStreams implements MethodSerializer {
         objectOutputStream.writeInt(classCount);
 
         // for each "classTo..." entry ...
-        for (Map.Entry<Class<?>, Map<String, Object>> entry : methodMap.entrySet()) {
-            // ...  write the class
-            objectOutputStream.writeObject(entry.getKey());
+        for (Map.Entry<Object, Map<String, Object>> entry : methodMap.entries()) {
+            // ...  write the class name
+            Object classOrClassName = entry.getKey();
+            objectOutputStream.writeObject(
+                    classOrClassName instanceof Class<?>
+                            ? ((Class<?>) classOrClassName).getName()
+                            : classOrClassName);
 
             Map<String, Object> selectorToMethodMap = entry.getValue();
             int selectorCount = selectorToMethodMap.size();
@@ -107,14 +132,16 @@ final class MethodSerializerUsingObjectStreams implements MethodSerializer {
                     Method method = (Method) value;
                     writeMethodLocatorInfo(
                             objectOutputStream,
-                            method.getName(), method.getParameterTypes());
+                            method.getName(),
+                            asTypeNamesArray(method.getParameterTypes()));
                 } else if (value instanceof MethodLocator) {
                     // for a method write its locator info
                     // (name and parameter types)
                     MethodLocator methodLocator = (MethodLocator) value;
                     writeMethodLocatorInfo(
                             objectOutputStream,
-                            methodLocator.methodName, methodLocator.parameterTypes);
+                            methodLocator.methodName,
+                            methodLocator.parameterTypesNames);
                 } else {
                     // other objects (e.g. Exceptions) write as they are
                     objectOutputStream.writeObject(value);
@@ -123,25 +150,28 @@ final class MethodSerializerUsingObjectStreams implements MethodSerializer {
         }
     }
 
-    private static void writeMethodLocatorInfo(ObjectOutputStream objectOutputStream, String methodName, Class<?>[] parameterTypes) throws IOException {
+    private static void writeMethodLocatorInfo(
+            ObjectOutputStream objectOutputStream,
+            String methodName,
+            String[] parameterTypesNames) throws IOException {
         objectOutputStream.writeObject(methodName);
-        objectOutputStream.writeObject(parameterTypes);
+        writeStringArray(objectOutputStream, parameterTypesNames);
     }
 
-    private Map<Class<?>, Map<String, Object>> readMethodMap(
+    private MethodMap readMethodMap(
             ObjectInputStream in, boolean loadMethodsLazy)
             throws IOException, ClassNotFoundException, NoSuchMethodException {
 
-        Map<Class<?>, Map<String, Object>> result = new IdentityHashMap<>();
+        MethodMap result = createMethodMapDefault();
 
         // read the number of classes
         int classCount = in.readInt();
         // for each class ...
         for (int i = 0; i < classCount; i++) {
-            // ... read the class (and create its "selector -> Method" map)
-            Class<?> type = (Class<?>) in.readObject();
+            // ... read the class (by name) (and create its "selector -> Method" map)
+            String typeName = (String) in.readObject();
             Map<String, Object> selectorToMethodMap = new HashMap<>();
-            result.put(type, selectorToMethodMap);
+            result.put(typeName, selectorToMethodMap);
 
             // ...  read the number of selectors/methods for this class
             int selectorCount = in.readInt();
@@ -154,14 +184,14 @@ final class MethodSerializerUsingObjectStreams implements MethodSerializer {
                     // this is the Method case
 
                     String methodName = (String) methodNameOrException;
-                    Class<?>[] parameterTypes = (Class<?>[]) in.readObject();
+                    String[] parameterTypeNames = readStringArray(in);
                     // either store a MethodLocator in the map (to be converted
                     // into a "real" Method when the Method is needed the first
                     // time) or the "real" Method
                     // TODO: check if using "getMethods" is more efficient
                     Object someKindOfMethod = loadMethodsLazy
-                            ? new MethodLocator(methodName, parameterTypes)
-                            : type.getMethod(methodName, parameterTypes);
+                            ? new MethodLocator(methodName, parameterTypeNames)
+                            : getTypeNamed(typeName).getMethod(methodName, asTypesArray(parameterTypeNames));
                     selectorToMethodMap.put(selector, someKindOfMethod);
                 } else {
                     selectorToMethodMap.put(selector, methodNameOrException);
@@ -169,6 +199,55 @@ final class MethodSerializerUsingObjectStreams implements MethodSerializer {
             }
         }
         return result;
+    }
+
+    private static Class<?> getTypeNamed(String typeName) {
+        return TYPES_BY_NAME.computeIfAbsent(typeName, className -> {
+            try {
+                return Class.forName(className);
+            } catch (ClassNotFoundException e) {
+                throw new PerformException(String.format(
+                        "Error when looking for type %s", className), e);
+            }
+        });
+    }
+
+    private static Class<?>[] asTypesArray(String[] typeNames) {
+        int n = typeNames.length;
+        Class<?>[] result = new Class<?>[n];
+        for (int i = 0; i < n; i++) {
+            result[i] = getTypeNamed(typeNames[i]);
+        }
+        return result;
+    }
+
+    private static String[] asTypeNamesArray(Class<?>[] types) {
+        int n = types.length;
+        String[] result = new String[n];
+        for (int i = 0; i < n; i++) {
+            result[i] = types[i].getName();
+        }
+        return result;
+    }
+
+    private String[] readStringArray(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        int nParams = in.readInt();
+        if (nParams == 0) {
+            return EMPTY_STRING_ARRAY;
+        }
+        String[] parameterTypeNames = new String[nParams];
+        for (int ip = 0; ip < nParams; ip++) {
+            parameterTypeNames[ip] = (String) in.readObject();
+        }
+        return parameterTypeNames;
+    }
+
+    private static void writeStringArray(
+            ObjectOutputStream objectOutputStream, String[] strings) throws IOException {
+        objectOutputStream.writeInt(strings.length);
+        for (String s : strings) {
+            objectOutputStream.writeObject(s);
+        }
     }
 
     private Path filePathForSerialization(String filePath) {

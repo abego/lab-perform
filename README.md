@@ -50,6 +50,11 @@ overall `perform` performance. Therefore, a sample test code using `perform`
 calls is executed multiple times, both in the "without memoization" and the
 "with memoization" scenario.
 
+_(General remark regarding performance measurements: To get the durations
+the test cases are repeated 3 times, started individually from the IDE, and
+the lowest number is used. Results in "real world" may vary.)_
+
+
 __Results: Run Small Sample multiple times__
 - 68 ms - `perform` without memoization (`perform_withoutMemoization_smallSampleMultipleTimes`).
 - 36 ms - `perform` with memoization (`perform_withMemoization_smallSampleMultipleTimes`).
@@ -63,10 +68,6 @@ absolute numbers and the ratio heavily depends on the specific implementation
 of the "original" getMethod, and the number of "repeated" method calls. E.g.
 if the original `getMethod` is slower the benefits of memoization becomes even 
 more convincing. So measuring the numbers in the real systems is essential.
-
-_(General remark regarding performance measurements: To get the durations
-the test cases are repeated 3 times, started individually from the IDE, and
-the lowest number is used. Results in "real world" may vary.)_
 
 ### Serialize Memoization Data
 
@@ -84,51 +85,49 @@ serialization. Again, this heavily depends on the original `getMethod` routine,
 the message "reuse" frequency, but also the way, the serialization and 
 de-serialization is implemented.
 
-#### Approach 1: Use ObjectStreams for Serialization
+#### Direct Loading of Serialized Memoization Data
 
-The first attempt to use serialization to speedup `getMethod` uses the standard
-Java ObjectStreams (`ObjectOutputStream`, `ObjectInputStream`). When the data
-was loaded from disk the memoization data was immediately restored completely,
-especially the reference to the Java `Method` to return for each used (Class, 
-Selector) combination was restored.
+We use the standard Java ObjectStreams (`ObjectOutputStream`, 
+`ObjectInputStream`) for serialization of `getMethod` memoization data. After
+loading the complete memoization data is restored, ready to use by the 
+application.
+
+Using this approach on our initial test sample shows no significant improvement 
+when comparing the memoization performance of the "simple" and "loading" 
+approach:
 
 __Results: Run Small Sample multiple times__
 - 36 ms - `perform` with memoization (`perform_withMemoization_smallSampleMultipleTimes`).
 - 73 ms - `perform` with memoization and saving the memoization data to a file (`perform_withMemoization_and_saveMethods_smallSampleMultipleTimes`).
 - 68 ms - `perform` with memoization data loaded from file (`perform_withMemoization_andLoadedFromFile_smallSampleMultipleTimes`)
 
-These numbers show no significant improvement when loading the cache from some 
-serialization.
-
 However, this changes when we switch to a larger test sample (5000 classes, 
 with 100 methods each).
 
-As before, "simple" memoization brings improvements as soon as methods are 
-called more than once. 
+As before, "simple" memoization brings improvements for this larger test sample
+as soon as methods are called more than once: 
 
-__Results: Run Big Sample twice__
+__Results: Run Big Sample _twice___
 - 17.4 s - `perform` without memoization (`perform_withoutMemoization_bigSampleTwice`).
 - 11.0 s - `perform` with memoization (`perform_withMemoization_bigSampleTwice`).
 
-In addition, with this larger test sample the serialization 
-makes even the initial `perform` call faster, by a factor of approx. 2.5 in our 
-example: 
+In addition, with this larger test sample the serialization even
+makes the initial `perform` call faster than without memoization, by a 
+factor of approx. 2.5 in our example: 
 
-__Test: Run Big Sample once__
+__Test: Run Big Sample _once___
 - 10.8 s - `perform` without memoization (`perform_withMemoization_bigSample`).
 - 4.3 s - `perform` with memoization data loaded from file (`perform_withMemoization_afterLoadMethods_bigSample`)
-- 11.0 s - `perform` with memoization (`perform_withMemoization_bigSample`).
-- 11.4 s - `perform` with memoization and saving the memoization data to a file (`perform_withMemoization_and_saveMethods_bigSample`).
 
-#### Approach 2: Lazy Loading of Serialized Memoization Data
+#### Lazy Loading of Serialized Memoization Data
 
 One disadvantage of the memoization serialization approach compared to the 
 "just memoize" approach is we introduce an extra delay at the start of the 
 application when we load the cache from disk. As the numbers from above show we
-are actually faster than in the "just memoize" approach, however we spend this
-time in the startup phase of the application, making the application seem to be
-"slower". In the "just memoize" approach the time for the various "initial"
-getMethod calls is distributed over the whole application execution.
+can actually be faster than in the "just memoize" approach, however we spend 
+this time in the startup phase of the application, making the application seem 
+to be "slower". In the "just memoize" approach the time for the various 
+"initial" getMethod calls is distributed over the whole application execution.
 
 One way to speed up loading the serialized memoization data is to postpone 
 time intensive parts of this load process "to later". 
@@ -136,47 +135,45 @@ time intensive parts of this load process "to later".
 When profiling the load phase it became obvious that a lot of time is spend by 
 resolving/restoring the actual objects from the serialized data. If we can
 postpone this expensive resolution to later loading should become faster. We 
-just need to make sure we save enough information to support this "lazy loading".
-Also saving this "lazy loading" information should be faster than the actual
-loading of the serialized data.
+just need to make sure we save enough information to support this 
+"lazy loading". 
 
-With this approach we can reduce the time required to load the data from disk
-by roughly a factor of 1.4:
+__General remark regarding lazy loading:__ Lazy loading may increase the overall 
+application execution time as some cpu-time is moved to some later point in 
+time, requiring some extra work to ensure it is executed later. This is 
+especially true when all methods of the method map are used at runtime. On the 
+other side lazy loading may reduce the overall application execution time when 
+not all methods stored in the method map are actually used at runtime. In the 
+non-lazy case also these "unused" methods are installed, hence waste some time.
+
+__Implementation Note__: When implementing lazy loading it turned out that one
+must take special care to choose a file format allowing for fast 
+de-serialization into an intermediate state that can later be "resolved" into 
+the `getMethod` memoization data actually needed by the application. 
+Especially one should avoid resolving `Class` objects at load time.
+For this reason `Class` objects are serialized just by their name. When a 
+`Class` is actually needed (for the type of the receiver or the parameter types)
+it can be constructed based on the type name.
+
+Using lazy loading on the larger test sample reduces the initial load time
+significantly, by a factor of 12:
 
 __Results: Load Big Sample Method Map (5000 classes, each with 100 methods)__
 - 3450 ms - loadMethods (`loadMethods_bigSample`).
-- 2490 ms - loadMethodsLazy (`loadMethodsLazy_bigSample`).
+- 271 ms - loadMethodsLazy (`loadMethodsLazy_bigSample`).
 
-Notice that lazy loading may increase the overall time as some code is moved
-to some later point in time, requiring some extra work to execute it later. On
-the other side lazy loading may also reduce the overall time when not all 
-methods stored in the methods map are actually used at runtime. In the non-lazy
-case also these "unused" methods are installed, hence waste some time.
+As already mentioned above "lazy loading" may mean, one may "just" move some 
+cpu-time to later. With our larger test sample we can therefore see roughly
+equals times when calling perform on every method, no matter if we use 
+`loadMethods` or `loadMethodsLazy`:
 
-#### Approach 3: Improved File Format for Lazy Loading
+__Results: perform-call every method in Big Sample after loading method map from disk__
+- 4.4 s - loadMethods - `perform_withMemoization_afterLoadMethods_bigSample`
+- 4.3 s - loadMethodsLazy - `perform_withMemoization_afterLoadMethodsLazy_bigSample`
 
-Using lazy loading speeds up the "initial" load time (compared to direct loading),
-however not very much.
-
-Profiling `loadMethodsLazy` reveals a lot of time was spend in reading the
-data from the file using `ObjectInputStream.readObject(...)`. If we could move
-these expensive operations to the "lazy part" of the getMethod resolution, the
-initial load time should be reduced even further.
-
-The basic idea to achieve this is to 
-- read the serialized data into memory as a byte array, and 
-- remember for each specific (Class, Selector) combination the offset of the 
-  serialized data in that byte array.
-
-The offset may be stored in the method map, for the specific (Class, Selector) 
-combination. When the actual method is requested the offset is used to 
-de-serialize the getMethod information from byte array. That information is 
-then stored in the method map, overwriting the previously stored offset.
-
-_(To implement this approach it may be necessary/beneficial to use a 
-file format different from that used in Approach 1 and 2.)_
-
-TO BE IMPLEMENTED
+But if one calls less different methods the difference between the total time 
+using `loadMethods` vs. `loadMethodsLazy` can be quite large, e.g. a factor 12
+as mentioned above.
 
 ## Overall Application Flow
 

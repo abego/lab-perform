@@ -4,15 +4,20 @@ import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.HashMap;
-import java.util.IdentityHashMap;
 import java.util.Map;
+
+import static org.abego.lab.perform.core.MethodMapDefault.createMethodMapDefault;
 
 public final class Performer {
     private Performer() {
     }
 
+    static {
+        reset();
+    }
+
     //region perform: the basic functionality of this class
-    private static long extraDelayInOriginalGetMethodInMicros = 1000;
+    private static long extraDelayInOriginalGetMethodInMicros = 0;
 
     public static long getExtraDelayInOriginalGetMethodInMicros() {
         return extraDelayInOriginalGetMethodInMicros;
@@ -48,7 +53,7 @@ public final class Performer {
         // getMethod implementation slower with a little delay. This also
         // compensates the fact a little that "original" getMethod is more
         // expensive than our implementation.
-        long endTime = System.nanoTime() + 1000*getExtraDelayInOriginalGetMethodInMicros();
+        long endTime = System.nanoTime() + 1000 * getExtraDelayInOriginalGetMethodInMicros();
         //noinspection StatementWithEmptyBody
         while (System.nanoTime() < endTime) {
             // busy waiting
@@ -74,15 +79,20 @@ public final class Performer {
 
     //region Memoization
 
-    /**
-     * A 2-step map, mapping (Class -> (selector: String -> Method|MethodLocator|NoSuchMethodException))
-     */
-    private static Map<Class<?>, Map<String, Object>> classToSelectorToMethodMap;
+    private static MethodMap classToSelectorToMethodMap;
 
     public static boolean isMemoizationEnabled() {
         return classToSelectorToMethodMap != null;
     }
 
+    /**
+     * Sets the `memoizationEnabled` property to the given {@code value}.
+     * <p>
+     * Changing the property's value will clear any previously memoized
+     * information.
+     *
+     * @param value the new value of the `memoizationEnabled` property
+     */
     public static void setMemoizationEnabled(boolean value) {
         if (value == isMemoizationEnabled()) {
             // nothing to change
@@ -96,6 +106,12 @@ public final class Performer {
         }
     }
 
+    public static void reset() {
+        methodSerializer = new MethodSerializerUsingObjectStreams();
+        setExtraDelayInOriginalGetMethodInMicros(0);
+        removeMethodMap();
+    }
+
     private static Method getMethod(Class<?> type, String selector)
             throws NoSuchMethodException {
 
@@ -104,6 +120,27 @@ public final class Performer {
                             c -> new HashMap<>())
                     .computeIfAbsent(selector, s -> {
                         try {
+                            // When using lazy loading stored the method in the
+                            // method map by the type's name and the selector,
+                            // to avoid loading the type too early.
+                            // Therefore, we first check if we can find it that
+                            // way
+                            Map<String, Object> selectorToMethodMap =
+                                    classToSelectorToMethodMap.get(type.getName());
+                            if (selectorToMethodMap != null) {
+                                Object o = selectorToMethodMap.get(selector);
+                                if (o != null) {
+                                    // we can now remove the entry associated
+                                    // with the type's name and selector as it
+                                    // be associated with the type and the
+                                    // selector once we leave the
+                                    // `computeIfAbsent` that called us.
+                                    selectorToMethodMap.remove(selector);
+
+                                    return o;
+                                }
+                            }
+
                             // only when no method was found in the cache the
                             // "expensive" original getMethod is called.
                             return originalGetMethod(type, selector);
@@ -131,7 +168,7 @@ public final class Performer {
     }
 
     private static void newEmptyMethodMap() {
-        classToSelectorToMethodMap = new IdentityHashMap<>();
+        classToSelectorToMethodMap = createMethodMapDefault();
     }
 
     private static void removeMethodMap() {
@@ -142,11 +179,11 @@ public final class Performer {
 
     //region Serialization of Memoization data
 
-    private static final MethodSerializer methodSerializer = new MethodSerializerUsingObjectStreams();
+    private static MethodSerializer methodSerializer = new MethodSerializerUsingObjectStreams();
 
     public static void saveMethods(String filePath) throws IOException {
         if (!isMemoizationEnabled()) {
-            throw new IllegalStateException("Must enable memoization to save methods.");
+            throw new PerformException("Must enable memoization to save methods.");
         }
 
         methodSerializer.saveMethods(filePath, classToSelectorToMethodMap);

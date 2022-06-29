@@ -7,7 +7,9 @@ import org.abego.lab.perform.sample.B;
 import org.abego.lab.perform.sample.C;
 import org.abego.lab.perform.sample.D;
 import org.abego.lab.perform.sample.E;
+import org.abego.lab.perform.typesample.UsingVariousTypes;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -19,6 +21,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class PerformerTest {
     private static final String SMALL_TEST_SAMPLE_METHOD_MAP_FILE_PATH = "methods-smallsample";
     private static final String BIG_TEST_SAMPLE_METHOD_MAP_FILE_PATH = "methods-bigsample";
+    private static final String VARIOUS_TYPES_METHOD_MAP_FILE_PATH = "methods-varioustypes";
+    private static final String REMOVED_CLASS_METHOD_MAP_FILE_PATH = "methods-removedclass";
     private static final String METHOD_MAP_FILE_NAME = "methodMap";
     private static final long EXTRA_ORIGINAL_GET_METHOD_DELAY_MICROS = 40;
 
@@ -36,9 +40,66 @@ class PerformerTest {
 
     @BeforeEach
     void setUp() {
-        Performer.setMemoizationEnabled(false);
+        Performer.reset();
         Performer.setExtraDelayInOriginalGetMethodInMicros(EXTRA_ORIGINAL_GET_METHOD_DELAY_MICROS);
     }
+
+    // region test sample file generation
+
+    /**
+     * Not a real test, but generates the method mop serialization file used
+     * in other tests.
+     * <p>
+     * Re-run this code when the file format of the method map files changed.
+     */
+    @Test
+    @Disabled
+    void generateSampleSerializationFiles() throws IOException {
+        saveMethodMapForRemovedClass();
+        saveMethodMapForSmallSample();
+        saveMethodMapForVariousTypesSample();
+        saveMethodMapForBigSample();
+
+        fail("Method map files are generated. Copy them to their final destination, if necessary.\n" +
+                "Also comment out the 'RemovedClass' so it is not found in its test.");
+    }
+
+    private void saveMethodMapForVariousTypesSample() throws IOException {
+        Performer.reset();
+        Performer.setMemoizationEnabled(true);
+        runVariousTypesCode();
+        Performer.saveMethods(VARIOUS_TYPES_METHOD_MAP_FILE_PATH);
+    }
+
+    private void saveMethodMapForSmallSample() throws IOException {
+        Performer.reset();
+        Performer.setMemoizationEnabled(true);
+        runSmallTestSample();
+        Performer.saveMethods(SMALL_TEST_SAMPLE_METHOD_MAP_FILE_PATH);
+    }
+
+    private void saveMethodMapForBigSample() throws IOException {
+        Performer.setMemoizationEnabled(true);
+        runBigSample();
+        Performer.saveMethods(BIG_TEST_SAMPLE_METHOD_MAP_FILE_PATH);
+    }
+
+    private void saveMethodMapForRemovedClass() throws IOException {
+        Performer.reset();
+        Performer.setMemoizationEnabled(true);
+        fail("Uncomment the next line (and comment out this line) to generate " + REMOVED_CLASS_METHOD_MAP_FILE_PATH);
+        // Performer.perform(new RemovedClass(), "foo");
+        Performer.saveMethods(REMOVED_CLASS_METHOD_MAP_FILE_PATH);
+    }
+
+    // DONT REMOVE THIS BLOCK. It is temporarily needed to generate test data
+    // (see saveMethodMapForRemovedClass())
+    //
+    //    private static class RemovedClass {
+    //        public void foo() {}
+    //    }
+
+    // endregion
 
     @Test
     void perform_withoutMemoization_smallSampleMultipleTimes() {
@@ -51,7 +112,7 @@ class PerformerTest {
     }
 
     private void printDuration(long startTime, long endTime, String testName) {
-        System.out.println(testName +": " + ((endTime - startTime +500)/ 1000) / 1000.0 + " ms");
+        System.out.println(testName + ": " + ((endTime - startTime + 500) / 1000) / 1000.0 + " ms");
     }
 
     @Test
@@ -125,25 +186,23 @@ class PerformerTest {
     }
 
     @Test
-    void perform_withMemoization_and_saveMethods_bigSample(
-            @TempDir File tempDir) throws IOException {
-        setDelayForBigSample();
-        Performer.setMemoizationEnabled(true);
-        long startTime = System.nanoTime();
-
-        runBigSample();
-
-        Performer.saveMethods(pathOfMethodMapFileInDir(tempDir));
-
-        printDuration(startTime, System.nanoTime(), "perform_withMemoization_and_saveMethods_bigSample");
-    }
-
-    @Test
     void perform_withMemoization_afterLoadMethods_smallSampleMultipleTimes() throws
             IOException, ClassNotFoundException, NoSuchMethodException {
         long startTime = System.nanoTime();
 
         Performer.loadMethods(SMALL_TEST_SAMPLE_METHOD_MAP_FILE_PATH);
+
+        runSmallTestSampleMultipleTimes();
+
+        printDuration(startTime, System.nanoTime(), "perform_withMemoization_andLoadedFromFile_smallSampleMultipleTimes");
+    }
+
+    @Test
+    void perform_withMemoization_afterLoadMethodsLazy_smallSampleMultipleTimes() throws
+            IOException, ClassNotFoundException, NoSuchMethodException {
+        long startTime = System.nanoTime();
+
+        Performer.loadMethodsLazy(SMALL_TEST_SAMPLE_METHOD_MAP_FILE_PATH);
 
         runSmallTestSampleMultipleTimes();
 
@@ -161,6 +220,19 @@ class PerformerTest {
         runBigSample();
 
         printDuration(startTime, System.nanoTime(), "perform_withMemoization_afterLoadMethods_bigSample");
+    }
+
+    @Test
+    void perform_withMemoization_afterLoadMethodsLazy_bigSample() throws
+            IOException, ClassNotFoundException, NoSuchMethodException {
+        setDelayForBigSample();
+        long startTime = System.nanoTime();
+
+        Performer.loadMethodsLazy(BIG_TEST_SAMPLE_METHOD_MAP_FILE_PATH);
+
+        runBigSample();
+
+        printDuration(startTime, System.nanoTime(), "perform_withMemoization_afterLoadMethodsLazy_bigSample");
     }
 
     @Test
@@ -229,7 +301,7 @@ class PerformerTest {
     @Test
     void saveMethods_requiresMemoizationEnabled(@TempDir File tempDir) {
         String filePath = pathOfMethodMapFileInDir(tempDir);
-        IllegalStateException e = assertThrows(IllegalStateException.class,
+        PerformException e = assertThrows(PerformException.class,
                 () -> Performer.saveMethods(filePath));
 
         assertEquals("Must enable memoization to save methods.", e.getMessage());
@@ -261,6 +333,61 @@ class PerformerTest {
 
         // make sure the tests run with the newly loaded methodMap
         runSmallTestSample();
+    }
+
+    @Test
+    void testVariousTypes() throws IOException, ClassNotFoundException, NoSuchMethodException {
+        Performer.setMemoizationEnabled(true);
+        Performer.loadMethodsLazy(VARIOUS_TYPES_METHOD_MAP_FILE_PATH);
+        runVariousTypesCode();
+    }
+
+    private void runVariousTypesCode() {
+        UsingVariousTypes testee = new UsingVariousTypes();
+
+        byte aByte = 123;
+        assertEquals("byte: 123", Performer.perform(testee, "byteToString", aByte));
+
+        short aShort = 1234;
+        assertEquals("short: 1234", Performer.perform(testee, "shortToString", aShort));
+
+        int anInt = 12345;
+        assertEquals("int: 12345", Performer.perform(testee, "intToString", anInt));
+
+        long aLong = 123456;
+        assertEquals("long: 123456", Performer.perform(testee, "longToString", aLong));
+
+        float aFloat = 123456.7f;
+        assertEquals("float: 123456.7", Performer.perform(testee, "floatToString", aFloat));
+
+        double aDouble = 123456.78;
+        assertEquals("double: 123456.78", Performer.perform(testee, "doubleToString", aDouble));
+
+        char aChar = 'Q';
+        assertEquals("char: Q", Performer.perform(testee, "charToString", aChar));
+
+        boolean aBoolean = true;
+        assertEquals("boolean: true", Performer.perform(testee, "booleanToString", aBoolean));
+
+        long[] longArray = new long[]{1, 4, 7};
+        assertEquals("1\n4\n7\n", Performer.perform(testee, "longArrayToString", (Object) longArray));
+
+        long[][] longArrayArray = new long[][]{new long[]{1, 4, 7}, new long[]{1, 2, 6}, new long[]{4, 9, 8}};
+        assertEquals("" +
+                        "1 4 7 \n" +
+                        "1 2 6 \n" +
+                        "4 9 8 \n",
+                Performer.perform(testee, "longArrayArrayToString", (Object) longArrayArray));
+
+        UsingVariousTypes.Foo[] foos = new UsingVariousTypes.Foo[]{
+                new UsingVariousTypes.Foo("a", 1),
+                new UsingVariousTypes.Foo("b", 12),
+                new UsingVariousTypes.Foo("c", 123),
+        };
+        assertEquals("" +
+                "Foo{text='a', value=1}\n" +
+                "Foo{text='b', value=12}\n" +
+                "Foo{text='c', value=123}\n", Performer.perform(testee, "fooArrayToString", (Object) foos));
     }
 
     private void runBigSample() {
@@ -317,4 +444,17 @@ class PerformerTest {
 
         assertEquals("org.abego.lab.perform.sample.A does not understand 'foo'", ex.getMessage());
     }
+
+    @Test
+    void removedClassesAreReported() throws IOException, ClassNotFoundException, NoSuchMethodException {
+        Performer.setMemoizationEnabled(false);
+
+        PerformException e = assertThrows(PerformException.class, () ->
+                Performer.loadMethods(REMOVED_CLASS_METHOD_MAP_FILE_PATH));
+
+        assertEquals(
+                "Error when looking for type org.abego.lab.perform.core.PerformerTest$RemovedClass",e.getMessage());
+    }
+
+
 }

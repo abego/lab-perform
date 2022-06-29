@@ -4,14 +4,19 @@ import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.Map;
 
+/**
+ * A {@link MethodSerializer} saves and loads a {@link MethodMap} and provides
+ * a way to "resolve" an actual {@link Method} object from entries in the
+ * method map.
+ */
 interface MethodSerializer {
-    void saveMethods(String filePath, Map<Class<?>, Map<String, Object>> methodMap) throws IOException;
+    void saveMethods(String filePath, MethodMap methodMap) throws IOException;
 
-    Map<Class<?>, Map<String, Object>> loadMethods(String filePath, boolean loadMethodsLazy) throws IOException, ClassNotFoundException, NoSuchMethodException;
+    MethodMap loadMethods(String filePath, boolean loadMethodsLazy) throws IOException, ClassNotFoundException, NoSuchMethodException;
 
     Method resolveMethod(
             Class<?> type,
             String selector,
             Object value,
-            Map<Class<?>, Map<String, Object>> methodMap) throws NoSuchMethodException;
+            MethodMap methodMap) throws NoSuchMethodException;
 }
