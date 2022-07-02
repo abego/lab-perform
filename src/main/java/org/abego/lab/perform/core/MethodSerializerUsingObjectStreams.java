@@ -1,11 +1,16 @@
 package org.abego.lab.perform.core;
 
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.OutputStream;
 import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
@@ -27,8 +32,8 @@ final class MethodSerializerUsingObjectStreams implements MethodSerializer {
 
     @Override
     public void saveMethods(String filePath, Map<Class<?>, Map<String, Object>> methodMap) throws IOException {
-        try (FileOutputStream fileOutputStream = new FileOutputStream(filePath+".ser");
-             ObjectOutputStream objectOutputStream = new ObjectOutputStream(fileOutputStream)) {
+        try (OutputStream outputStream = newOutputStream(filePathForSerialization(filePath));
+             ObjectOutputStream objectOutputStream = new ObjectOutputStream(outputStream)) {
 
             writeMethodMap(objectOutputStream, methodMap);
 
@@ -38,8 +43,8 @@ final class MethodSerializerUsingObjectStreams implements MethodSerializer {
 
     @Override
     public Map<Class<?>, Map<String, Object>> loadMethods(String filePath, boolean loadMethodsLazy) throws IOException, ClassNotFoundException, NoSuchMethodException {
-        try (FileInputStream fileInputStream = new FileInputStream(filePath+".ser");
-             ObjectInputStream objectInputStream = new ObjectInputStream(fileInputStream)) {
+        try (InputStream inputStream = newInputStream(filePathForSerialization(filePath));
+             ObjectInputStream objectInputStream = new ObjectInputStream(inputStream)) {
 
             return readMethodMap(objectInputStream, loadMethodsLazy);
         }
@@ -164,5 +169,19 @@ final class MethodSerializerUsingObjectStreams implements MethodSerializer {
             }
         }
         return result;
+    }
+
+    private Path filePathForSerialization(String filePath) {
+        return Paths.get(filePath + ".ser");
+    }
+
+    private static InputStream newInputStream(Path filePath)
+            throws IOException {
+        return new BufferedInputStream(Files.newInputStream(filePath));
+    }
+
+    private static OutputStream newOutputStream(Path filePath)
+            throws IOException {
+        return new BufferedOutputStream(Files.newOutputStream(filePath));
     }
 }
