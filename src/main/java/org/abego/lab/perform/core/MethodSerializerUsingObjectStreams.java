@@ -7,13 +7,17 @@ import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
+import java.io.Writer;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 final class MethodSerializerUsingObjectStreams implements MethodSerializer {
     private final class MethodLocator {
@@ -70,6 +74,23 @@ final class MethodSerializerUsingObjectStreams implements MethodSerializer {
         throw new IllegalStateException(
                 String.format("Unexpected value memoized for %s and selector '%s': %s",
                         type, selector, value));
+    }
+
+    @Override
+    public void dumpMethods(Writer writer, Map<Class<?>, Map<String, Object>> methodMap) throws IOException {
+        List<Class<?>> sortedClasses = methodMap.keySet().stream()
+                .sorted(Comparator.comparing(Class::getCanonicalName))
+                .collect(Collectors.toList());
+        for (Class<?> type : sortedClasses) {
+            String className = type.getCanonicalName();
+            List<String> methodNames = methodMap.get(type).keySet().stream().sorted().collect(Collectors.toList());
+            for (String methodName : methodNames) {
+                writer.append(className);
+                writer.append('\t');
+                writer.append(methodName);
+                writer.append('\n');
+            }
+        }
     }
 
     private static void writeMethodMap(

@@ -11,8 +11,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -20,6 +25,7 @@ class PerformerTest {
     private static final String SMALL_TEST_SAMPLE_METHOD_MAP_FILE_PATH = "methods-smallsample";
     private static final String BIG_TEST_SAMPLE_METHOD_MAP_FILE_PATH = "methods-bigsample";
     private static final String METHOD_MAP_FILE_NAME = "methodMap";
+    private static final String METHOD_MAP_DUMP_FILE_NAME = "methodMap-dump.csv";
     private static final long EXTRA_ORIGINAL_GET_METHOD_DELAY_MICROS = 40;
 
     private static final int TEST_REPEAT_COUNT = 20;
@@ -51,7 +57,7 @@ class PerformerTest {
     }
 
     private void printDuration(long startTime, long endTime, String testName) {
-        System.out.println(testName +": " + ((endTime - startTime +500)/ 1000) / 1000.0 + " ms");
+        System.out.println(testName + ": " + ((endTime - startTime + 500) / 1000) / 1000.0 + " ms");
     }
 
     @Test
@@ -316,5 +322,69 @@ class PerformerTest {
                 () -> Performer.perform(a, "foo"));
 
         assertEquals("org.abego.lab.perform.sample.A does not understand 'foo'", ex.getMessage());
+    }
+
+    @Test
+    void dumpMethods_Writer() throws IOException {
+        Performer.setMemoizationEnabled(true);
+        runSmallTestSample();
+        StringWriter sw = new StringWriter();
+
+        Performer.dumpMethods(sw);
+
+        assertIsSmallTestSampleMethodDump(sw.toString());
+    }
+
+    @Test
+    void dumpMethods_File(@TempDir File tempDir) throws IOException {
+        Performer.setMemoizationEnabled(true);
+        runSmallTestSample();
+
+        String path = new File(tempDir, METHOD_MAP_DUMP_FILE_NAME).getAbsolutePath();
+        Performer.dumpMethods(path);
+
+        assertIsSmallTestSampleMethodDump(readFileText(path));
+    }
+
+    private static String readFileText(String fileName) throws IOException {
+        StringBuilder sb = new StringBuilder();
+        try (FileInputStream fis = new FileInputStream(fileName);
+             InputStreamReader isr = new InputStreamReader(fis, StandardCharsets.UTF_8);
+             BufferedReader reader = new BufferedReader(isr)
+        ) {
+            String str;
+            while ((str = reader.readLine()) != null) {
+                sb.append(str);
+                sb.append('\n');
+            }
+        }
+        return sb.toString();
+    }
+
+    private void assertIsSmallTestSampleMethodDump(String actual) {
+        assertEquals("" +
+                        "org.abego.lab.perform.sample.A\tfoo\n" +
+                        "org.abego.lab.perform.sample.A\tinCAndE\n" +
+                        "org.abego.lab.perform.sample.A\tonlyInA\n" +
+                        "org.abego.lab.perform.sample.A\tonlyInC\n" +
+                        "org.abego.lab.perform.sample.A\ttoString\n" +
+                        "org.abego.lab.perform.sample.B\tinCAndE\n" +
+                        "org.abego.lab.perform.sample.B\tonlyInA\n" +
+                        "org.abego.lab.perform.sample.B\tonlyInC\n" +
+                        "org.abego.lab.perform.sample.B\ttoString\n" +
+                        "org.abego.lab.perform.sample.C\t+\n" +
+                        "org.abego.lab.perform.sample.C\tinCAndE\n" +
+                        "org.abego.lab.perform.sample.C\tonlyInA\n" +
+                        "org.abego.lab.perform.sample.C\tonlyInC\n" +
+                        "org.abego.lab.perform.sample.C\ttoString\n" +
+                        "org.abego.lab.perform.sample.D\tinCAndE\n" +
+                        "org.abego.lab.perform.sample.D\tonlyInA\n" +
+                        "org.abego.lab.perform.sample.D\tonlyInC\n" +
+                        "org.abego.lab.perform.sample.D\ttoString\n" +
+                        "org.abego.lab.perform.sample.E\tinCAndE\n" +
+                        "org.abego.lab.perform.sample.E\tonlyInA\n" +
+                        "org.abego.lab.perform.sample.E\tonlyInC\n" +
+                        "org.abego.lab.perform.sample.E\ttoString\n",
+                actual);
     }
 }

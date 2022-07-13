@@ -1,8 +1,13 @@
 package org.abego.lab.perform.core;
 
 import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
@@ -48,7 +53,7 @@ public final class Performer {
         // getMethod implementation slower with a little delay. This also
         // compensates the fact a little that "original" getMethod is more
         // expensive than our implementation.
-        long endTime = System.nanoTime() + 1000*getExtraDelayInOriginalGetMethodInMicros();
+        long endTime = System.nanoTime() + 1000 * getExtraDelayInOriginalGetMethodInMicros();
         //noinspection StatementWithEmptyBody
         while (System.nanoTime() < endTime) {
             // busy waiting
@@ -158,6 +163,17 @@ public final class Performer {
 
     public static void loadMethodsLazy(String filePath) throws IOException, ClassNotFoundException, NoSuchMethodException {
         loadMethods(filePath, true);
+    }
+
+    public static void dumpMethods(Writer writer) throws IOException {
+        methodSerializer.dumpMethods(writer, classToSelectorToMethodMap);
+    }
+
+    public static void dumpMethods(String filePath) throws IOException {
+        try (OutputStreamWriter writer = new OutputStreamWriter(
+                Files.newOutputStream(Paths.get(filePath)), StandardCharsets.UTF_8)) {
+            dumpMethods(writer);
+        }
     }
 
     private static void loadMethods(String filePath, boolean loadMethodsLazy) throws IOException, ClassNotFoundException, NoSuchMethodException {
